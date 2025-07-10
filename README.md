@@ -6,6 +6,13 @@
 
 ---
 
+## 🔗 Tải xuống
+
+Bạn có thể tải xuống phiên bản Windows mới nhất (.exe) tại đây:
+
+➡️ [Tải xuống VieClone cho Windows](https://github.com/khieu-dv/vieshare/releases/download/1.0.0/vieshare_tauri_0.1.0_x64-setup.exe)
+---
+
 ## 🚀 Tính năng chính
 
 * ⚡ Kết nối/ngắt kết nối đến FRP server chỉ với 1 cú click
