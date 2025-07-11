@@ -2,7 +2,7 @@
 
 # 🔌 FRPS Port Mapping Manager
 
-**FRPS Manager** là một ứng dụng desktop đa nền tảng giúp bạn quản lý cấu hình và kết nối tới **FRP (Fast Reverse Proxy)** một cách dễ dàng. Ứng dụng được xây dựng với [Tauri](https://tauri.app/) + [Next.js](https://nextjs.org/), cung cấp giao diện trực quan để tạo, theo dõi và xóa cổng port từ xa.
+**VieShare** là một ứng dụng desktop đa nền tảng giúp bạn quản lý cấu hình và kết nối tới **FRP (Fast Reverse Proxy)** một cách dễ dàng. Ứng dụng được xây dựng với [Tauri](https://tauri.app/) + [Next.js](https://nextjs.org/), cung cấp giao diện trực quan để tạo, theo dõi và xóa cổng port từ xa.
 
 ---
 
@@ -38,8 +38,8 @@ Trước khi cài đặt, đảm bảo bạn đã có:
 ## 📦 Cài đặt & Setup
 
 ```bash
-git clone https://github.com/khieu-dv/frps-manager.git
-cd frps-manager
+git clone https://github.com/khieu-dv/vieshare.git
+cd vieshare
 npm install
 ```
 
