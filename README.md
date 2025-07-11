@@ -15,13 +15,13 @@ You can download the latest Windows version (.exe) here:
 
 
 <p align="center">
-  <img src="./public/s1.png" width="400" alt="VieVlog Dashboard" />
-  <img src="./public/s2.png" width="400" alt="VieVlog Content Creation" />
+  <img src="./public/s1.jpg" width="400" alt="VieVlog Dashboard" />
+  <img src="./public/s2.jpg" width="400" alt="VieVlog Content Creation" />
 </p>
 
 <p align="center">
-  <img src="./public/s3.png" width="400" alt="VieVlog Learning Interface" />
-  <img src="./public/s4.png" width="400" alt="VieVlog Mobile View" />
+  <img src="./public/s3.jpg" width="400" alt="VieVlog Learning Interface" />
+  <img src="./public/s4.jpg" width="400" alt="VieVlog Mobile View" />
 </p>
 
 ---
