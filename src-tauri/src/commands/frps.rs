@@ -11,9 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::State;
 
-#[cfg(target_os = "windows")]
-const FRPC_CONFIG_PATH: &str = "VieShare/bin/frpc.toml";
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 const FRPC_CONFIG_PATH: &str = "VieShare/bin/frpc.toml";
 
 // API endpoint for port allocation
@@ -159,7 +157,7 @@ fn calculate_remaining_mappings(mappings: &HashMap<String, PortMapping>) -> usiz
     MAX_PORT_MAPPINGS.saturating_sub(mappings.len())
 }
 
-// Fixed: Hide console window in production builds
+// Kill existing frpc processes based on OS
 #[cfg(target_os = "windows")]
 fn kill_existing_frpc_processes() -> Result<(), String> {
     let mut cmd = Command::new("taskkill");
@@ -204,11 +202,29 @@ fn kill_existing_frpc_processes() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn kill_existing_frpc_processes() -> Result<(), String> {
+    let output = Command::new("pkill")
+        .args(&["-f", "frpc"])
+        .output()
+        .map_err(|e| format!("Failed to execute pkill: {}", e))?;
+
+    if output.status.success() {
+        println!("Successfully killed existing frpc processes");
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("no process found") {
+            println!("Warning: {}", stderr);
+        }
+    }
+    Ok(())
+}
+
 fn wait_for_process_cleanup() {
     std::thread::sleep(std::time::Duration::from_millis(2000)); // Increased wait time
 }
 
-// Fixed: Hide console window in production builds
+// Check if frpc is running based on OS
 #[cfg(target_os = "windows")]
 fn is_frpc_running() -> bool {
     let mut cmd = Command::new("tasklist");
@@ -232,7 +248,7 @@ fn is_frpc_running() -> bool {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn is_frpc_running() -> bool {
     let output = Command::new("pgrep").args(&["-f", "frpc"]).output();
 
@@ -454,12 +470,12 @@ fn save_config_to_toml(config: &TomlConfig) -> Result<(), String> {
     Ok(())
 }
 
-// Fixed: Hide console window and handle process creation properly
+// Create frpc process based on OS
 fn create_frpc_process() -> Result<Child, String> {
     let mut cmd = Command::new(FRPC_PATH);
     cmd.arg("-c").arg(FRPC_CONFIG_PATH);
     
-    // Hide console window in production builds
+    // Hide console window in production builds for Windows
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
         use std::os::windows::process::CommandExt;
@@ -512,6 +528,7 @@ pub async fn frps_connect(
 
     Ok("FRPS client connected successfully".to_string())
 }
+
 
 #[tauri::command]
 pub async fn frps_disconnect(processes: State<'_, FrpsProcesses>) -> Result<String, String> {

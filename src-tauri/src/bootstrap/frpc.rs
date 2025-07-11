@@ -6,13 +6,10 @@ use crate::utils::{directory::create_directory, file::file_exists, net::download
 #[cfg(target_os = "windows")]
 pub const FRPC_PATH: &str = "VieShare/bin/frpc.exe";
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub const FRPC_PATH: &str = "VieShare/bin/frpc";
 
-#[cfg(target_os = "windows")]
-pub const FRPC_CONFIG_PATH: &str = "VieShare/bin/frpc.toml";
-
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub const FRPC_CONFIG_PATH: &str = "VieShare/bin/frpc.toml";
 
 // Function to clean up the frpc.toml file and remove default proxy configurations
@@ -122,12 +119,67 @@ pub async fn bootstrap_frpc(logger: &IPCLogger) {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(target_os = "macos")]
+pub async fn bootstrap_frpc(logger: &IPCLogger) {
+    if file_exists(FRPC_PATH) {
+        return;
+    }
+
+    let _ = create_directory("VieShare/bin");
+    let _ = create_directory("VieShare/_temp");
+
+    logger.log("Downloading frpc...");
+    
+    // Detect macOS architecture
+    let arch = std::env::consts::ARCH;
+    let download_url = match arch {
+        "aarch64" => "https://github.com/fatedier/frp/releases/download/v0.63.0/frp_0.63.0_darwin_arm64.tar.gz",
+        "x86_64" => "https://github.com/fatedier/frp/releases/download/v0.63.0/frp_0.63.0_darwin_amd64.tar.gz",
+        _ => "https://github.com/fatedier/frp/releases/download/v0.63.0/frp_0.63.0_darwin_amd64.tar.gz", // Default to amd64
+    };
+    
+    let _ = download_file_async(
+        download_url,
+        "VieShare/_temp/frpc.tar.gz",
+    )
+    .await;
+    logger.log("Downloaded frpc to: \"VieShare/_temp/frpc.tar.gz\"");
+
+    logger.log("Extracting frpc...");
+    let _ = extract_frpc();
+    logger.log(&format!("Extracted frpc to: \"{}\"", FRPC_PATH));
+    
+    // Clean up the configuration file after extraction
+    logger.log("Cleaning frpc configuration...");
+    if let Err(e) = clean_frpc_config() {
+        logger.log(&format!("Warning: Failed to clean frpc config: {}", e));
+    } else {
+        logger.log("Successfully cleaned frpc configuration");
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn extract_frpc() -> std::io::Result<()> {
     use flate2::read::GzDecoder;
     use tar::Archive;
 
-    use crate::utils::{file::copy_file, linux::linux_permit_file};
+    use crate::utils::{file::copy_file};
+    
+    // For macOS, we need to handle permissions differently
+    #[cfg(target_os = "linux")]
+    use crate::utils::linux::linux_permit_file;
+    
+    #[cfg(target_os = "macos")]
+    fn macos_permit_file(path: &str, mode: u32) {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        
+        if let Ok(metadata) = fs::metadata(path) {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(mode);
+            let _ = fs::set_permissions(path, permissions);
+        }
+    }
 
     let file = File::open("VieShare/_temp/frpc.tar.gz")?;
     let decompressor = GzDecoder::new(BufReader::new(file));
@@ -144,8 +196,14 @@ fn extract_frpc() -> std::io::Result<()> {
             std::io::Error::new(std::io::ErrorKind::NotFound, "frpc not found in archive")
         })?;
 
-    let _ = copy_file(&inner_bin_path, FRPC_PATH);
+    let _ = copy_file(inner_bin_path.to_str().unwrap(), FRPC_PATH);
+    
+    // Set executable permissions based on OS
+    #[cfg(target_os = "linux")]
     linux_permit_file(FRPC_PATH, 0o755);
+    
+    #[cfg(target_os = "macos")]
+    macos_permit_file(FRPC_PATH, 0o755);
 
     // Also copy the frpc.toml file if it exists
     let config_path = std::fs::read_dir("VieShare/_temp/frpc")?
@@ -154,7 +212,9 @@ fn extract_frpc() -> std::io::Result<()> {
         .map(|entry| entry.path().join("frpc.toml"));
     
     if let Some(config_source) = config_path {
-        let _ = copy_file(&config_source, FRPC_CONFIG_PATH);
+        if let Some(config_source_str) = config_source.to_str() {
+            let _ = copy_file(config_source_str, FRPC_CONFIG_PATH);
+        }
     }
 
     Ok(())
