@@ -7,6 +7,7 @@ mod bootstrap;
 mod commands;
 mod logger;
 mod utils;
+
 use crate::commands::frps::{init_frps_config_state, init_frps_processes};
 use tauri::{Manager, WindowEvent};
 
@@ -19,24 +20,25 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(init_frps_processes()) // Only manage once
+        .manage(init_frps_processes())
         .manage(init_frps_config_state())
         .setup(|app| {
             let handle = app.handle().clone();
 
             // Setup cleanup on window close
-            let main_window = handle.get_webview_window("main").unwrap();
-            main_window.on_window_event(move |event| {
-                if let WindowEvent::CloseRequested { .. } = event {
-                    // Clean up frpc processes before closing
-                    let handle_clone = handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(e) = commands::frps::frps_cleanup().await {
-                            eprintln!("Error during cleanup: {}", e);
-                        }
-                    });
-                }
-            });
+            if let Some(main_window) = handle.get_webview_window("main") {
+                main_window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { .. } = event {
+                        // Clean up frpc processes before closing
+                        let handle_clone = handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = commands::frps::frps_cleanup().await {
+                                eprintln!("Error during cleanup: {}", e);
+                            }
+                        });
+                    }
+                });
+            }
 
             Ok(())
         })
@@ -54,7 +56,6 @@ pub fn run() {
             commands::frps::frps_test_connection,
             commands::frps::frps_load_config,
             commands::frps::frps_get_mappings,
-            // frps_get_port_limits
             commands::frps::frps_get_port_limits,
         ])
         .run(tauri::generate_context!())

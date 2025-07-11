@@ -54,7 +54,6 @@ pub struct PortMapping {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimplePortMapping {
     pub local_port: u16,
-    // Remove remote_port since it will be auto-allocated
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +80,6 @@ struct ReleasePortRequest {
     remote_port: u16,
 }
 
-// Structures for checking allocated ports
 #[derive(Debug, Serialize, Deserialize)]
 struct AllocatedPortInfo {
     proxy_name: String,
@@ -147,7 +145,6 @@ serverPort = {}
     }
 }
 
-// Helper function to check if port mapping limit is reached
 fn check_port_mapping_limit(mappings: &HashMap<String, PortMapping>) -> Result<(), String> {
     if mappings.len() >= MAX_PORT_MAPPINGS {
         return Err(format!(
@@ -158,23 +155,29 @@ fn check_port_mapping_limit(mappings: &HashMap<String, PortMapping>) -> Result<(
     Ok(())
 }
 
-// Helper function to calculate remaining mappings
 fn calculate_remaining_mappings(mappings: &HashMap<String, PortMapping>) -> usize {
     MAX_PORT_MAPPINGS.saturating_sub(mappings.len())
 }
 
-// Kill existing frpc processes
+// Fixed: Hide console window in production builds
 #[cfg(target_os = "windows")]
 fn kill_existing_frpc_processes() -> Result<(), String> {
-    let output = Command::new("taskkill")
-        .args(&["/F", "/IM", "frpc.exe"])
-        .output()
+    let mut cmd = Command::new("taskkill");
+    cmd.args(&["/F", "/IM", "frpc.exe"]);
+    
+    // Hide console window in production
+    #[cfg(not(debug_assertions))]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute taskkill: {}", e))?;
 
     if output.status.success() {
         println!("Successfully killed existing frpc processes");
     } else {
-        // It's OK if no processes were found to kill
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.contains("not found") {
             println!("Warning: {}", stderr);
@@ -193,7 +196,6 @@ fn kill_existing_frpc_processes() -> Result<(), String> {
     if output.status.success() {
         println!("Successfully killed existing frpc processes");
     } else {
-        // It's OK if no processes were found to kill
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.contains("no process found") {
             println!("Warning: {}", stderr);
@@ -202,17 +204,24 @@ fn kill_existing_frpc_processes() -> Result<(), String> {
     Ok(())
 }
 
-// Wait for processes to be killed
 fn wait_for_process_cleanup() {
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    std::thread::sleep(std::time::Duration::from_millis(2000)); // Increased wait time
 }
 
-// Check if frpc process is running
+// Fixed: Hide console window in production builds
 #[cfg(target_os = "windows")]
 fn is_frpc_running() -> bool {
-    let output = Command::new("tasklist")
-        .args(&["/FI", "IMAGENAME eq frpc.exe"])
-        .output();
+    let mut cmd = Command::new("tasklist");
+    cmd.args(&["/FI", "IMAGENAME eq frpc.exe"]);
+    
+    // Hide console window in production
+    #[cfg(not(debug_assertions))]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    let output = cmd.output();
 
     match output {
         Ok(output) => {
@@ -233,9 +242,11 @@ fn is_frpc_running() -> bool {
     }
 }
 
-// Get allocated ports from API
 async fn get_allocated_ports() -> Result<Vec<u16>, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     let response = client
         .get(&format!("{}/allocated", PORT_API_BASE_URL))
@@ -249,10 +260,9 @@ async fn get_allocated_ports() -> Result<Vec<u16>, String> {
             .await
             .map_err(|e| format!("Failed to parse allocated ports response: {}", e))?;
 
-        // Handle the case where allocated_ports is null
         let allocated_ports: Vec<u16> = result
             .allocated_ports
-            .unwrap_or_default() // If null, use empty Vec
+            .unwrap_or_default()
             .iter()
             .map(|port_info| port_info.remote_port)
             .collect();
@@ -267,17 +277,21 @@ async fn get_allocated_ports() -> Result<Vec<u16>, String> {
     }
 }
 
-// Find available port in range 8000-9000
-// Find available port in range 8000-8010, excluding restricted ports
 async fn find_available_port_in_range() -> Result<u16, String> {
     let restricted_ports = vec![8081, 8090, 9000];
-    let allocated_ports = get_allocated_ports().await?;
+    
+    // Try to get allocated ports, but don't fail if API is unreachable
+    let allocated_ports = match get_allocated_ports().await {
+        Ok(ports) => ports,
+        Err(e) => {
+            println!("Warning: Could not get allocated ports from API: {}", e);
+            Vec::new() // Continue with empty list
+        }
+    };
 
-    // Create a HashSet for O(1) lookup
     let allocated_set: std::collections::HashSet<u16> = allocated_ports.into_iter().collect();
     let restricted_set: std::collections::HashSet<u16> = restricted_ports.into_iter().collect();
 
-    // Collect all available ports in the range
     let mut available_ports: Vec<u16> = Vec::new();
     for port in MIN_PORT..=MAX_PORT {
         if !allocated_set.contains(&port) && !restricted_set.contains(&port) {
@@ -292,7 +306,6 @@ async fn find_available_port_in_range() -> Result<u16, String> {
         ));
     }
 
-    // Randomly select an available port
     let mut rng = rand::thread_rng();
     let random_index = rng.gen_range(0..available_ports.len());
     let selected_port = available_ports[random_index];
@@ -300,12 +313,10 @@ async fn find_available_port_in_range() -> Result<u16, String> {
     Ok(selected_port)
 }
 
-// Simplified port allocation - just find available port without API call
 async fn allocate_port_locally() -> Result<u16, String> {
     find_available_port_in_range().await
 }
 
-// Generate unique mapping name
 fn generate_mapping_name(
     remote_port: u16,
     existing_mappings: &HashMap<String, PortMapping>,
@@ -443,6 +454,27 @@ fn save_config_to_toml(config: &TomlConfig) -> Result<(), String> {
     Ok(())
 }
 
+// Fixed: Hide console window and handle process creation properly
+fn create_frpc_process() -> Result<Child, String> {
+    let mut cmd = Command::new(FRPC_PATH);
+    cmd.arg("-c").arg(FRPC_CONFIG_PATH);
+    
+    // Hide console window in production builds
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    
+    // Set stdio to null to prevent issues
+    cmd.stdout(Stdio::null())
+       .stderr(Stdio::null())
+       .stdin(Stdio::null());
+
+    cmd.spawn()
+        .map_err(|e| format!("Failed to start frpc: {}", e))
+}
+
 #[tauri::command]
 pub async fn frps_connect(
     processes: State<'_, FrpsProcesses>,
@@ -450,12 +482,10 @@ pub async fn frps_connect(
 ) -> Result<String, String> {
     let mut processes_guard = processes.lock().map_err(|e| e.to_string())?;
 
-    // Check if already connected
     if processes_guard.contains_key("main") {
         return Err("FRPS client is already running".to_string());
     }
 
-    // Kill any existing frpc processes to prevent conflicts
     println!("Checking for existing frpc processes...");
     if is_frpc_running() {
         println!("Found existing frpc processes, killing them...");
@@ -465,7 +495,6 @@ pub async fn frps_connect(
 
     let mut toml_config = load_config_from_toml()?;
 
-    // Use hard-coded values
     toml_config.server_addr = DEFAULT_SERVER_ADDR.to_string();
     toml_config.server_port = DEFAULT_SERVER_PORT;
     toml_config.token = "".to_string();
@@ -478,15 +507,7 @@ pub async fn frps_connect(
         *state_guard = Some(Box::new(toml_config));
     }
 
-    // Start new frpc process
-    let child = Command::new(FRPC_PATH)
-        .arg("-c")
-        .arg(FRPC_CONFIG_PATH)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to start frpc: {}", e))?;
-
+    let child = create_frpc_process()?;
     processes_guard.insert("main".to_string(), child);
 
     Ok("FRPS client connected successfully".to_string())
@@ -497,20 +518,18 @@ pub async fn frps_disconnect(processes: State<'_, FrpsProcesses>) -> Result<Stri
     let mut processes_guard = processes.lock().map_err(|e| e.to_string())?;
 
     if let Some(mut child) = processes_guard.remove("main") {
-        child
-            .kill()
-            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        let _ = child.kill(); // Ignore errors when killing
 
-        // Also kill any other frpc processes that might be running
         if is_frpc_running() {
             kill_existing_frpc_processes()?;
+            wait_for_process_cleanup();
         }
 
         Ok("FRPS client disconnected successfully".to_string())
     } else {
-        // Even if we don't have a tracked process, kill any running frpc
         if is_frpc_running() {
             kill_existing_frpc_processes()?;
+            wait_for_process_cleanup();
             Ok("FRPS client disconnected successfully (cleaned up orphaned processes)".to_string())
         } else {
             Err("No active FRPS connection found".to_string())
@@ -518,7 +537,6 @@ pub async fn frps_disconnect(processes: State<'_, FrpsProcesses>) -> Result<Stri
     }
 }
 
-// Updated frps_add_port_mapping function call with port limit check
 #[tauri::command]
 pub async fn frps_add_port_mapping(
     simple_mapping: SimplePortMapping,
@@ -527,16 +545,11 @@ pub async fn frps_add_port_mapping(
 ) -> Result<String, String> {
     let mut toml_config = load_config_from_toml()?;
 
-    // Check if port mapping limit is reached
     check_port_mapping_limit(&toml_config.mappings)?;
 
-    // Get remote port locally without API call
     let remote_port = allocate_port_locally().await?;
-
-    // Generate unique name using remote_port instead of local_port
     let mapping_name = generate_mapping_name(remote_port, &toml_config.mappings);
 
-    // Create full mapping with hard-coded values
     let new_mapping = PortMapping {
         name: mapping_name.clone(),
         local_ip: DEFAULT_LOCAL_IP.to_string(),
@@ -561,25 +574,15 @@ pub async fn frps_add_port_mapping(
     // Restart frpc if it's running
     let mut processes_guard = processes.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = processes_guard.remove("main") {
-        child
-            .kill()
-            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        let _ = child.kill();
 
-        // Wait a bit and clean up any remaining processes
         wait_for_process_cleanup();
         if is_frpc_running() {
             kill_existing_frpc_processes()?;
             wait_for_process_cleanup();
         }
 
-        let new_child = Command::new(FRPC_PATH)
-            .arg("-c")
-            .arg(FRPC_CONFIG_PATH)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to restart frpc: {}", e))?;
-
+        let new_child = create_frpc_process()?;
         processes_guard.insert("main".to_string(), new_child);
     }
 
@@ -597,15 +600,13 @@ pub async fn frps_remove_port_mapping(
 ) -> Result<String, String> {
     let mut toml_config = load_config_from_toml()?;
 
-    // Get the mapping to release the port
     let mapping = toml_config
         .mappings
         .get(&mapping_name)
         .ok_or_else(|| "Port mapping not found".to_string())?;
 
-    let remote_port = mapping.remote_port;
+    let _remote_port = mapping.remote_port;
 
-    // Remove from config
     toml_config.mappings.remove(&mapping_name);
 
     save_config_to_toml(&toml_config)?;
@@ -618,25 +619,15 @@ pub async fn frps_remove_port_mapping(
     // Restart frpc if it's running
     let mut processes_guard = processes.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = processes_guard.remove("main") {
-        child
-            .kill()
-            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        let _ = child.kill();
 
-        // Wait a bit and clean up any remaining processes
         wait_for_process_cleanup();
         if is_frpc_running() {
             kill_existing_frpc_processes()?;
             wait_for_process_cleanup();
         }
 
-        let new_child = Command::new(FRPC_PATH)
-            .arg("-c")
-            .arg(FRPC_CONFIG_PATH)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to restart frpc: {}", e))?;
-
+        let new_child = create_frpc_process()?;
         processes_guard.insert("main".to_string(), new_child);
     }
 
@@ -654,7 +645,6 @@ pub async fn frps_get_status(
     let processes_guard = processes.lock().map_err(|e| e.to_string())?;
     let config_guard = config_state.lock().map_err(|e| e.to_string())?;
 
-    // Check both our tracked process and system processes
     let tracked_connected = processes_guard.contains_key("main");
     let system_connected = is_frpc_running();
     let connected = tracked_connected || system_connected;
@@ -703,7 +693,7 @@ pub async fn frps_test_connection() -> Result<String, String> {
         &addr
             .parse()
             .map_err(|e| format!("Invalid address: {}", e))?,
-        Duration::from_secs(5),
+        Duration::from_secs(10), // Increased timeout
     ) {
         Ok(_) => Ok("Connection test successful".to_string()),
         Err(e) => Err(format!("Connection test failed: {}", e)),
@@ -726,7 +716,6 @@ pub async fn frps_get_mappings() -> Result<Vec<PortMapping>, String> {
     Ok(toml_config.mappings.values().cloned().collect())
 }
 
-// New command to get port mapping limits
 #[tauri::command]
 pub async fn frps_get_port_limits() -> Result<(usize, usize), String> {
     let toml_config = load_config_from_toml()?;
