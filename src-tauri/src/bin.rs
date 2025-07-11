@@ -6,5 +6,3 @@ pub const FRPC_PATH: &str = "VieShare/bin/frpc";
 
 #[cfg(target_os = "macos")]
 pub const FRPC_PATH: &str = "VieShare/bin/frpc";
-
-

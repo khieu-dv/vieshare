@@ -32,6 +32,7 @@
       ]
     },
     "fs:default",
-    "fs:allow-appdata-write"
+    "fs:allow-appdata-write",
+    "shell:default"
   ]
 }

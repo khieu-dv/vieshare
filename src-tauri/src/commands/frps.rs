@@ -162,15 +162,16 @@ fn calculate_remaining_mappings(mappings: &HashMap<String, PortMapping>) -> usiz
 fn kill_existing_frpc_processes() -> Result<(), String> {
     let mut cmd = Command::new("taskkill");
     cmd.args(&["/F", "/IM", "frpc.exe"]);
-    
+
     // Hide console window in production
     #[cfg(not(debug_assertions))]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    
-    let output = cmd.output()
+
+    let output = cmd
+        .output()
         .map_err(|e| format!("Failed to execute taskkill: {}", e))?;
 
     if output.status.success() {
@@ -229,14 +230,14 @@ fn wait_for_process_cleanup() {
 fn is_frpc_running() -> bool {
     let mut cmd = Command::new("tasklist");
     cmd.args(&["/FI", "IMAGENAME eq frpc.exe"]);
-    
+
     // Hide console window in production
     #[cfg(not(debug_assertions))]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    
+
     let output = cmd.output();
 
     match output {
@@ -295,7 +296,7 @@ async fn get_allocated_ports() -> Result<Vec<u16>, String> {
 
 async fn find_available_port_in_range() -> Result<u16, String> {
     let restricted_ports = vec![8081, 8090, 9000];
-    
+
     // Try to get allocated ports, but don't fail if API is unreachable
     let allocated_ports = match get_allocated_ports().await {
         Ok(ports) => ports,
@@ -474,18 +475,18 @@ fn save_config_to_toml(config: &TomlConfig) -> Result<(), String> {
 fn create_frpc_process() -> Result<Child, String> {
     let mut cmd = Command::new(FRPC_PATH);
     cmd.arg("-c").arg(FRPC_CONFIG_PATH);
-    
+
     // Hide console window in production builds for Windows
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    
+
     // Set stdio to null to prevent issues
     cmd.stdout(Stdio::null())
-       .stderr(Stdio::null())
-       .stdin(Stdio::null());
+        .stderr(Stdio::null())
+        .stdin(Stdio::null());
 
     cmd.spawn()
         .map_err(|e| format!("Failed to start frpc: {}", e))
@@ -528,7 +529,6 @@ pub async fn frps_connect(
 
     Ok("FRPS client connected successfully".to_string())
 }
-
 
 #[tauri::command]
 pub async fn frps_disconnect(processes: State<'_, FrpsProcesses>) -> Result<String, String> {
@@ -686,7 +686,10 @@ pub async fn frps_get_status(
     };
 
     let remaining_mappings = calculate_remaining_mappings(
-        &active_mappings.iter().map(|m| (m.name.clone(), m.clone())).collect()
+        &active_mappings
+            .iter()
+            .map(|m| (m.name.clone(), m.clone()))
+            .collect(),
     );
 
     Ok(FrpsStatus {

@@ -16,17 +16,17 @@ pub const FRPC_CONFIG_PATH: &str = "VieShare/bin/frpc.toml";
 fn clean_frpc_config() -> std::io::Result<()> {
     use std::fs;
     use std::io::Write;
-    
+
     // Default clean configuration without any proxy
     let clean_config = r#"# This is a clean frpc configuration file
 # Server configuration will be set by the application
 
 "#;
-    
+
     // Write the clean configuration to the file
     let mut file = File::create(FRPC_CONFIG_PATH)?;
     file.write_all(clean_config.as_bytes())?;
-    
+
     println!("Cleaned frpc configuration file: {}", FRPC_CONFIG_PATH);
     Ok(())
 }
@@ -51,7 +51,7 @@ pub async fn bootstrap_frpc(logger: &IPCLogger) {
     logger.log("Extracting frpc...");
     let _ = extract_frpc();
     logger.log(&format!("Extracted frpc to: \"{}\"", FRPC_PATH));
-    
+
     // Clean up the configuration file after extraction
     logger.log("Cleaning frpc configuration...");
     if let Err(e) = clean_frpc_config() {
@@ -109,7 +109,7 @@ pub async fn bootstrap_frpc(logger: &IPCLogger) {
     logger.log("Extracting frpc...");
     let _ = extract_frpc();
     logger.log(&format!("Extracted frpc to: \"{}\"", FRPC_PATH));
-    
+
     // Clean up the configuration file after extraction
     logger.log("Cleaning frpc configuration...");
     if let Err(e) = clean_frpc_config() {
@@ -129,7 +129,7 @@ pub async fn bootstrap_frpc(logger: &IPCLogger) {
     let _ = create_directory("VieShare/_temp");
 
     logger.log("Downloading frpc...");
-    
+
     // Detect macOS architecture
     let arch = std::env::consts::ARCH;
     let download_url = match arch {
@@ -137,18 +137,14 @@ pub async fn bootstrap_frpc(logger: &IPCLogger) {
         "x86_64" => "https://github.com/fatedier/frp/releases/download/v0.63.0/frp_0.63.0_darwin_amd64.tar.gz",
         _ => "https://github.com/fatedier/frp/releases/download/v0.63.0/frp_0.63.0_darwin_amd64.tar.gz", // Default to amd64
     };
-    
-    let _ = download_file_async(
-        download_url,
-        "VieShare/_temp/frpc.tar.gz",
-    )
-    .await;
+
+    let _ = download_file_async(download_url, "VieShare/_temp/frpc.tar.gz").await;
     logger.log("Downloaded frpc to: \"VieShare/_temp/frpc.tar.gz\"");
 
     logger.log("Extracting frpc...");
     let _ = extract_frpc();
     logger.log(&format!("Extracted frpc to: \"{}\"", FRPC_PATH));
-    
+
     // Clean up the configuration file after extraction
     logger.log("Cleaning frpc configuration...");
     if let Err(e) = clean_frpc_config() {
@@ -163,17 +159,17 @@ fn extract_frpc() -> std::io::Result<()> {
     use flate2::read::GzDecoder;
     use tar::Archive;
 
-    use crate::utils::{file::copy_file};
-    
+    use crate::utils::file::copy_file;
+
     // For macOS, we need to handle permissions differently
     #[cfg(target_os = "linux")]
     use crate::utils::linux::linux_permit_file;
-    
+
     #[cfg(target_os = "macos")]
     fn macos_permit_file(path: &str, mode: u32) {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
-        
+
         if let Ok(metadata) = fs::metadata(path) {
             let mut permissions = metadata.permissions();
             permissions.set_mode(mode);
@@ -197,11 +193,11 @@ fn extract_frpc() -> std::io::Result<()> {
         })?;
 
     let _ = copy_file(inner_bin_path.to_str().unwrap(), FRPC_PATH);
-    
+
     // Set executable permissions based on OS
     #[cfg(target_os = "linux")]
     linux_permit_file(FRPC_PATH, 0o755);
-    
+
     #[cfg(target_os = "macos")]
     macos_permit_file(FRPC_PATH, 0o755);
 
@@ -210,7 +206,7 @@ fn extract_frpc() -> std::io::Result<()> {
         .filter_map(Result::ok)
         .find(|entry| entry.path().join("frpc.toml").exists())
         .map(|entry| entry.path().join("frpc.toml"));
-    
+
     if let Some(config_source) = config_path {
         if let Some(config_source_str) = config_source.to_str() {
             let _ = copy_file(config_source_str, FRPC_CONFIG_PATH);

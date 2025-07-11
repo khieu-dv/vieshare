@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { writeTextFile, readTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-shell';
 import * as path from '@tauri-apps/api/path';
 import { Button } from '../../ui/primitives/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../ui/primitives/card';
@@ -330,8 +331,14 @@ export default function FrpsManager() {
     [isBootstrapped, checkStatus]
   );
 
-  const openExternalLink = useCallback((url: string) => {
-    window.open(url, '_blank');
+
+  const openExternalLink = useCallback(async (url: string) => {
+    try {
+      await open(url);
+    } catch (error) {
+      console.error('Failed to open URL:', error);
+      setMessage('Failed to open URL');
+    }
   }, []);
 
   return (
