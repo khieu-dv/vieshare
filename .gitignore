@@ -16,3 +16,4 @@ next-env.d.ts
 src-tauri/VieShare
 *.tmp
 *.temp
+sign_macos.sh
