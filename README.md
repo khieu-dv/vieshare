@@ -13,6 +13,19 @@ You can download the latest Windows version (.exe) here:
 
 ---
 
+
+<p align="center">
+  <img src="./public/s1.png" width="400" alt="VieVlog Dashboard" />
+  <img src="./public/s2.png" width="400" alt="VieVlog Content Creation" />
+</p>
+
+<p align="center">
+  <img src="./public/s3.png" width="400" alt="VieVlog Learning Interface" />
+  <img src="./public/s4.png" width="400" alt="VieVlog Mobile View" />
+</p>
+
+---
+
 ## 🚀 Key Features
 
 * ⚡ Connect/disconnect to FRP server with a single click
